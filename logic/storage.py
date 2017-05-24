@@ -1,46 +1,43 @@
-import json
-from json import JSONDecodeError
+import pg8000,functools
+from tweet import Tweet
+from config import Config
+
+
+def uses_db(f):
+    @functools.wraps(f)
+    def wrapper(cls,*args,**kwargs):
+        cursor = cls._conn.cursor()
+        res = f(cls,cursor,*args,**kwargs)
+        cursor.close()
+        cls._conn.commit()
+        return res
+    return wrapper
 
 
 class Storage(object):
+    _conn = pg8000.connect(**Config.DB_CONFIG)
 
-    def __init__(self, file_path):
-        self._file_path = file_path
-        try:
-            f = open(self._file_path, 'r')
-            content = json.load(f)
+    @classmethod
+    @uses_db
+    def insert_tweet(cls, cursor, name, tweet):
+        cursor.execute("INSERT INTO tweets (name,tweet) VALUES (%s,%s) RETURNING id", (name, tweet))
+        return cursor.fetchone()[0]
 
-            tmp_dict = {}
-            for item in content:
-                tmp_dict[int(item)] = content[item]
-            self._tweets = tmp_dict
-            f.close()
-        except (JSONDecodeError, FileNotFoundError) as e:
-            self._tweets = {}
-            f = open(self._file_path, 'w')
-            json.dump(self._tweets, f)
-            f.close()
+    @classmethod
+    @uses_db
+    def remove_tweet(cls, cursor, id):
+        cursor.execute("DELETE FROM tweets WHERE id = (%s)", (id,))
 
-    def insert_tweet(self, message):
-        try:
-            new_id = max(self._tweets.keys()) + 1
-        except ValueError:
-            new_id = 0
-        self._tweets[new_id] = {'id': new_id, 'name': message['name'], 'tweet': message['tweet']}
-        self.persist()
-        return new_id
+    @classmethod
+    @uses_db
+    def list_tweets(cls, cursor,):
+        cursor.execute("SELECT id,name,tweet FROM tweets")
+        res = [Tweet(*data).to_dict() for data in cursor.fetchall()]
+        return res
 
-    def remove_tweet(self, id):
-        self._tweets.pop(id)
-        self.persist()
-
-    def persist(self):
-        f = open(self._file_path, 'w')
-        json.dump(self._tweets, f)
-        f.close()
-
-    def list_tweets(self):
-        return self._tweets
-
-    def get_tweet(self, id):
-        return self._tweets[id]
+    @classmethod
+    @uses_db
+    def get_tweet(cls, cursor, id):
+        cursor.execute("SELECT id, name, tweet FROM tweets WHERE id=%s", (id,))
+        res = Tweet(*cursor.fetchone()).to_dict()
+        return res

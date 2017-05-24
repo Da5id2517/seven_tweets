@@ -1,38 +1,40 @@
 import json
 
 from flask import Flask, request
-
+from tweet import Tweet
 from logic.storage import Storage
+from config import Config
 
 
-storage = Storage('storage.json')
+config = Config()
 app = Flask(__name__)
 
 
 @app.route('/tweets', methods=['GET'])
 def list_tweets():
-    resp = [tweet for id,tweet in storage.list_tweets().items()]
+    resp = Storage().list_tweets()
     return json.dumps(resp), 200
 
 
 @app.route('/tweets/<int:id>', methods=['GET'])
 def get_tweet(id):
     try:
-        return json.dumps(storage.get_tweet(id)), 200
+        return json.dumps(Storage().get_tweet(id)), 200
     except KeyError:
         return json.dumps({'error': 'Tweet does not exists'}), 404
 
 @app.route('/tweets', methods=['POST'])
 def post_tweet():
-    tweet_dict = {'name': request.form['name'], 'tweet': request.form['tweet']}
-    new_id = storage.insert_tweet(tweet_dict)
-    tweet_dict.update({'id': new_id})
-    return json.dumps(tweet_dict), 200
+    name = request.form['name']
+    tweet = request.form['tweet']
+    id = Storage().insert_tweet(name,tweet)
+    res = Tweet(id,name,tweet)
+    return json.dumps(res.to_dict()), 200
 
 @app.route('/tweets/<int:id>', methods=['DELETE'])
 def delete_tweet(id):
     try:
-        storage.remove_tweet(id)
+        Storage().remove_tweet(id)
         return '', 204
     except KeyError:
         return json.dumps({'error': 'Tweet does not exist'}), 404
